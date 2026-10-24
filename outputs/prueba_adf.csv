@@ -1,2 +1,2 @@
-estadistico_adf,valor_p,rezagos_fijos,observaciones,critico_1%,critico_5%,critico_10%
--7.869650533187965,5.02489393453225e-12,12,821,-3.438340089700066,-2.8650668167215243,-2.568647979826153
+estadistico_adf,valor_p,metodo_seleccion_rezagos,rezagos_seleccionados,observaciones_efectivas,critico_1%,critico_5%,critico_10%
+-18.378408556787086,2.2116310680427614e-30,AIC,2,831,-3.438243639935131,-2.865024299696786,-2.568625331245176

@@ -2,8 +2,14 @@
   "orden": "(2, 0, 0)",
   "aic": -2737.8854701350033,
   "bic": -2718.9805365255684,
-  "ljung_box_p_10": 0.5103580369278655,
-  "ljung_box_p_20": 0.714652873296298,
+  "r2_muestra_completa": 0.01710045725242726,
+  "grados_libertad_ljung_box": 2,
+  "ljung_box_p_5": 0.13419148604767991,
+  "ljung_box_p_10": 0.3232096072615006,
+  "ljung_box_p_20": 0.5903317308119924,
+  "ljung_box_residuos_cuadrados_p_10": 1.2189573011549883e-23,
+  "ljung_box_residuos_cuadrados_p_20": 1.3375346129441994e-20,
   "arch_lm_p": 1.0564551659086765e-15,
-  "jarque_bera_p": 0.0
+  "jarque_bera_p": 0.0,
+  "curtosis_pearson": 14.072390949520482
 }

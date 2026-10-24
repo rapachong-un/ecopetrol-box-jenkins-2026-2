@@ -1,0 +1,16 @@
+{
+  "orden": "(2, 0, 0)",
+  "metodo_estimacion": "Powell, maximo 500 iteraciones",
+  "n_entrenamiento": 793,
+  "fecha_inicio_entrenamiento": "2010-01-15",
+  "fecha_fin_entrenamiento": "2025-03-20",
+  "n_validacion": 41,
+  "fecha_inicio_validacion": "2025-03-28",
+  "fecha_fin_validacion": "2025-12-30",
+  "mae_ar2": 0.031749011071616394,
+  "rmse_ar2": 0.03942069566548344,
+  "mae_referencia_cero": 0.031767098791491345,
+  "rmse_referencia_cero": 0.0394987739843876,
+  "mejora_rmse_porcentual": 0.1976727655775436,
+  "convergio": true
+}

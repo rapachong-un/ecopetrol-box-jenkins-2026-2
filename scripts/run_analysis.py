@@ -28,6 +28,7 @@ END_DATE = "2025-12-31"
 DATE_COLUMN = "date"
 RETURN_COLUMN = "ret"
 FORECAST_HORIZON = 10
+HOLDOUT_START = "2025-03-28"
 
 # Lista fija para comparar modelos motivados por la identificación.
 CANDIDATE_ORDERS = [
@@ -159,27 +160,65 @@ def compare_candidate_models(returns: pd.Series) -> None:
 
 
 def save_model_diagnostics(model, returns: pd.Series) -> None:
-    """Guarda pruebas y gráficas para revisar los residuos del ARIMA."""
+    """Guarda coeficientes y diagnosticos del AR(2) en la muestra completa."""
     residuals = pd.Series(
         np.asarray(model.resid), index=returns.index, name="residuo"
     ).dropna()
+    residual_values = residuals.to_numpy()
+    model_df = SELECTED_ORDER[0] + SELECTED_ORDER[2]
 
-    ljung_box = acorr_ljungbox(residuals, lags=[10, 20], return_df=True)
-    arch_test = het_arch(residuals, nlags=10, result_object=False)
-    jb_test = jarque_bera(residuals)
+    ljung_box = acorr_ljungbox(
+        residuals, lags=[5, 10, 20], model_df=model_df, return_df=True
+    )
+    ljung_box_squared = acorr_ljungbox(
+        residuals**2, lags=[10, 20], return_df=True
+    )
+    arch_test = het_arch(residual_values, nlags=10, result_object=False)
+    jb_test = jarque_bera(residual_values)
+    total_sum_squares = float(
+        np.sum((returns.to_numpy() - returns.mean()) ** 2)
+    )
+    residual_sum_squares = float(np.sum(residual_values**2))
+    r_squared = 1.0 - residual_sum_squares / total_sum_squares
 
     diagnostics = {
         "orden": str(SELECTED_ORDER),
         "aic": float(model.aic),
         "bic": float(model.bic),
+        "r2_muestra_completa": r_squared,
+        "grados_libertad_ljung_box": model_df,
+        "ljung_box_p_5": float(ljung_box.loc[5, "lb_pvalue"]),
         "ljung_box_p_10": float(ljung_box.loc[10, "lb_pvalue"]),
         "ljung_box_p_20": float(ljung_box.loc[20, "lb_pvalue"]),
+        "ljung_box_residuos_cuadrados_p_10": float(
+            ljung_box_squared.loc[10, "lb_pvalue"]
+        ),
+        "ljung_box_residuos_cuadrados_p_20": float(
+            ljung_box_squared.loc[20, "lb_pvalue"]
+        ),
         "arch_lm_p": float(arch_test[1]),
         "jarque_bera_p": float(jb_test[1]),
+        "curtosis_pearson": float(residuals.kurt() + 3.0),
     }
     (OUTPUT_DIR / "diagnosticos_modelo.json").write_text(
         json.dumps(diagnostics, indent=2, ensure_ascii=False),
         encoding="utf-8",
+    )
+
+    confidence_interval = np.asarray(model.conf_int())
+    parameter_table = pd.DataFrame(
+        {
+            "parametro": model.param_names,
+            "coeficiente": np.asarray(model.params),
+            "error_estandar": np.asarray(model.bse),
+            "z": np.asarray(model.tvalues),
+            "valor_p": np.asarray(model.pvalues),
+            "ic95_inferior": confidence_interval[:, 0],
+            "ic95_superior": confidence_interval[:, 1],
+        }
+    )
+    parameter_table.to_csv(
+        OUTPUT_DIR / "tabla_parametros_modelo.csv", index=False
     )
     residuals.to_frame().to_csv(
         OUTPUT_DIR / "residuos.csv", index_label="date"
@@ -189,7 +228,6 @@ def save_model_diagnostics(model, returns: pd.Series) -> None:
     fig.tight_layout()
     fig.savefig(OUTPUT_DIR / "diagnostico_residuos.png", dpi=180)
     plt.close(fig)
-
 
 def save_forecast(model, returns: pd.Series) -> None:
     """Guarda el pronóstico a diez semanas y su gráfica con intervalo al 95 %."""
@@ -246,6 +284,72 @@ def save_forecast(model, returns: pd.Series) -> None:
     plt.close(fig)
 
 
+
+def save_holdout_validation(returns: pd.Series) -> None:
+    """Evalua el AR(2) en las 41 semanas finales de 2025 frente al retorno cero."""
+    split_date = pd.Timestamp(HOLDOUT_START)
+    train = returns.loc[returns.index < split_date]
+    test = returns.loc[returns.index >= split_date]
+    if train.empty or test.empty:
+        raise ValueError(
+            "La validacion requiere datos antes y desde "
+            f"{HOLDOUT_START}."
+        )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        holdout_model = ARIMA(
+            train.to_numpy(), order=SELECTED_ORDER, trend="c"
+        ).fit(method_kwargs={"method": "powell", "maxiter": 500})
+
+    converged = bool(getattr(holdout_model, "mle_retvals", {}).get("converged", True))
+    if not converged:
+        raise RuntimeError("El modelo AR(2) de la validacion no convergio.")
+
+    prediction = np.asarray(
+        holdout_model.get_forecast(steps=len(test)).predicted_mean
+    )
+    observed = test.to_numpy()
+    errors_ar2 = observed - prediction
+    errors_zero = observed
+    mae_ar2 = float(np.mean(np.abs(errors_ar2)))
+    rmse_ar2 = float(np.sqrt(np.mean(errors_ar2**2)))
+    mae_zero = float(np.mean(np.abs(errors_zero)))
+    rmse_zero = float(np.sqrt(np.mean(errors_zero**2)))
+
+    validation_table = pd.DataFrame(
+        {
+            "fecha": test.index,
+            "log_retorno_observado": observed,
+            "pronostico_ar2": prediction,
+            "referencia_retorno_cero": np.zeros(len(test)),
+        }
+    )
+    validation_table.to_csv(
+        OUTPUT_DIR / "validacion_fuera_muestra_41_semanas.csv", index=False
+    )
+
+    validation = {
+        "orden": str(SELECTED_ORDER),
+        "metodo_estimacion": "Powell, maximo 500 iteraciones",
+        "n_entrenamiento": int(len(train)),
+        "fecha_inicio_entrenamiento": train.index.min().date().isoformat(),
+        "fecha_fin_entrenamiento": train.index.max().date().isoformat(),
+        "n_validacion": int(len(test)),
+        "fecha_inicio_validacion": test.index.min().date().isoformat(),
+        "fecha_fin_validacion": test.index.max().date().isoformat(),
+        "mae_ar2": mae_ar2,
+        "rmse_ar2": rmse_ar2,
+        "mae_referencia_cero": mae_zero,
+        "rmse_referencia_cero": rmse_zero,
+        "mejora_rmse_porcentual": (rmse_zero - rmse_ar2) / rmse_zero * 100.0,
+        "convergio": converged,
+    }
+    (OUTPUT_DIR / "validacion_fuera_muestra_41_semanas.json").write_text(
+        json.dumps(validation, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
 def run_analysis(returns: pd.Series) -> None:
     """Ejecuta Box–Jenkins y genera todos los resultados en outputs/."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -261,8 +365,7 @@ def run_analysis(returns: pd.Series) -> None:
     adf = adfuller(
         returns,
         regression="c",
-        maxlag=12,
-        autolag=None,
+        autolag="AIC",
         result_object=False,
     )
     adf_result = pd.DataFrame(
@@ -270,8 +373,9 @@ def run_analysis(returns: pd.Series) -> None:
             {
                 "estadistico_adf": adf[0],
                 "valor_p": adf[1],
-                "rezagos_fijos": 12,
-                "observaciones": adf[3],
+                "metodo_seleccion_rezagos": "AIC",
+                "rezagos_seleccionados": adf[2],
+                "observaciones_efectivas": adf[3],
                 **{f"critico_{key}": value for key, value in adf[4].items()},
             }
         ]
@@ -279,6 +383,7 @@ def run_analysis(returns: pd.Series) -> None:
     adf_result.to_csv(OUTPUT_DIR / "prueba_adf.csv", index=False)
 
     compare_candidate_models(returns)
+    save_holdout_validation(returns)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
