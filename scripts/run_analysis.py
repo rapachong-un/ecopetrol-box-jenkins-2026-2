@@ -165,10 +165,11 @@ def save_model_diagnostics(model, returns: pd.Series) -> None:
         np.asarray(model.resid), index=returns.index, name="residuo"
     ).dropna()
     residual_values = residuals.to_numpy()
-    model_df = SELECTED_ORDER[0] + SELECTED_ORDER[2]
-
+    # Se conserva la especificacion inicial: prueba Ljung-Box sin ajuste
+    # de grados de libertad por los parametros estimados del AR(2).
+    model_df = 0
     ljung_box = acorr_ljungbox(
-        residuals, lags=[5, 10, 20], model_df=model_df, return_df=True
+        residuals, lags=[5, 10, 20], return_df=True
     )
     ljung_box_squared = acorr_ljungbox(
         residuals**2, lags=[10, 20], return_df=True
@@ -186,7 +187,7 @@ def save_model_diagnostics(model, returns: pd.Series) -> None:
         "aic": float(model.aic),
         "bic": float(model.bic),
         "r2_muestra_completa": r_squared,
-        "grados_libertad_ljung_box": model_df,
+        "grados_libertad_ajustados_ljung_box": model_df,
         "ljung_box_p_5": float(ljung_box.loc[5, "lb_pvalue"]),
         "ljung_box_p_10": float(ljung_box.loc[10, "lb_pvalue"]),
         "ljung_box_p_20": float(ljung_box.loc[20, "lb_pvalue"]),
@@ -365,7 +366,8 @@ def run_analysis(returns: pd.Series) -> None:
     adf = adfuller(
         returns,
         regression="c",
-        autolag="AIC",
+        maxlag=12,
+        autolag=None,
         result_object=False,
     )
     adf_result = pd.DataFrame(
@@ -373,8 +375,7 @@ def run_analysis(returns: pd.Series) -> None:
             {
                 "estadistico_adf": adf[0],
                 "valor_p": adf[1],
-                "metodo_seleccion_rezagos": "AIC",
-                "rezagos_seleccionados": adf[2],
+                "rezagos_fijos": 12,
                 "observaciones_efectivas": adf[3],
                 **{f"critico_{key}": value for key, value in adf[4].items()},
             }
