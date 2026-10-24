@@ -36,6 +36,8 @@ macOS/Linux:
 
 ## Archivos y resultados
 
+Al terminar, la terminal muestra el resumen descriptivo, ADF, comparacion de candidatos, coeficientes AR(2), diagnosticos residuales, validacion de 41 semanas y pronosticos a 10 semanas. Los archivos completos tambien quedan guardados en outputs/.
+
 Todo el código Python está en `scripts/run_analysis.py`, el único archivo que se debe ejecutar. Las rutas se resuelven desde la ubicación del script. El análisis crea o actualiza `outputs/`.
 
 Los resultados incluidos y regenerables abarcan descriptivos, prueba ADF, tabla de parámetros, comparación de candidatos, diagnósticos residuales, validación fuera de muestra de 41 semanas, serie analizada y pronóstico final a diez semanas.

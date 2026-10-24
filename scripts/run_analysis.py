@@ -396,16 +396,135 @@ def run_analysis(returns: pd.Series) -> None:
     save_forecast(model, returns)
 
 
-def main() -> None:
-    returns = load_weekly_returns()
-    print(f"Observaciones: {len(returns)}")
+def _format_p_value(value: float) -> str:
+    if value == 0:
+        return "<1e-300"
+    if value < 0.001:
+        return f"{value:.2e}"
+    return f"{value:.3f}"
+
+
+def print_terminal_summary(returns: pd.Series) -> None:
+    """Imprime en consola los resultados guardados por el analisis."""
+    adf = pd.read_csv(OUTPUT_DIR / "prueba_adf.csv").iloc[0]
+    candidates = pd.read_csv(OUTPUT_DIR / "comparacion_candidatos.csv")
+    diagnostics = json.loads(
+        (OUTPUT_DIR / "diagnosticos_modelo.json").read_text(encoding="utf-8")
+    )
+    parameters = pd.read_csv(OUTPUT_DIR / "tabla_parametros_modelo.csv")
+    validation = json.loads(
+        (OUTPUT_DIR / "validacion_fuera_muestra_41_semanas.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    forecast = pd.read_csv(OUTPUT_DIR / "pronostico_10_semanas.csv")
+
+    print("\n" + "=" * 76)
+    print("RESUMEN DEL ANALISIS BOX-JENKINS")
+    print("=" * 76)
     print(
-        "Periodo observado: "
+        f"Muestra: {len(returns)} observaciones, "
         f"{returns.index.min().date()} a {returns.index.max().date()}"
     )
+    print(
+        f"Media semanal: {returns.mean() * 100:.4f}% | "
+        f"Desv. estandar: {returns.std() * 100:.4f}% | "
+        f"Asimetria: {returns.skew():.3f} | "
+        f"Curtosis: {returns.kurt() + 3:.2f}"
+    )
+
+    print("\nESTACIONARIEDAD")
+    print(
+        f"ADF con 12 rezagos fijos: {adf['estadistico_adf']:.4f}; "
+        f"p={_format_p_value(adf['valor_p'])}; "
+        f"observaciones efectivas={int(adf['observaciones_efectivas'])}."
+    )
+    print("Conclusion: se rechaza la hipotesis de raiz unitaria.")
+
+    print("\nCOMPARACION DE CANDIDATOS (ordenados por BIC)")
+    print(f"{'Modelo':<16}{'AIC':>13}{'BIC':>13}")
+    for row in candidates.sort_values("bic").itertuples(index=False):
+        order = f"ARIMA({int(row.p)},{int(row.d)},{int(row.q)})"
+        print(f"{order:<16}{row.aic:>13.2f}{row.bic:>13.2f}")
+    print(f"Modelo final fijado manualmente: ARIMA{SELECTED_ORDER}.")
+
+    print("\nCOEFICIENTES DEL MODELO FINAL")
+    print(f"{'Parametro':<12}{'Estimacion':>13}{'p-valor':>14}{'IC 95%':>28}")
+    for name in ("const", "ar.L1", "ar.L2"):
+        row = parameters.loc[parameters["parametro"] == name].iloc[0]
+        interval = (
+            f"[{row['ic95_inferior']:.6f}, {row['ic95_superior']:.6f}]"
+        )
+        label = {"const": "Constante", "ar.L1": "AR(1)", "ar.L2": "AR(2)"}[name]
+        print(
+            f"{label:<12}{row['coeficiente']:>13.6f}"
+            f"{_format_p_value(row['valor_p']):>14}{interval:>28}"
+        )
+    print(
+        f"AIC={diagnostics['aic']:.2f} | BIC={diagnostics['bic']:.2f} | "
+        f"R2 dentro de muestra={diagnostics['r2_muestra_completa'] * 100:.2f}%"
+    )
+
+    print("\nDIAGNOSTICOS DE RESIDUOS")
+    print(
+        "Ljung-Box sin ajuste por parametros estimados: "
+        f"p(10)={diagnostics['ljung_box_p_10']:.3f}, "
+        f"p(20)={diagnostics['ljung_box_p_20']:.3f}."
+    )
+    print(
+        "ARCH-LM: "
+        f"p={_format_p_value(diagnostics['arch_lm_p'])}; "
+        "Ljung-Box de residuos^2: "
+        f"p(10)={_format_p_value(diagnostics['ljung_box_residuos_cuadrados_p_10'])}, "
+        f"p(20)={_format_p_value(diagnostics['ljung_box_residuos_cuadrados_p_20'])}."
+    )
+    jb_p_value = _format_p_value(diagnostics["jarque_bera_p"])
+    if jb_p_value.startswith("<"):
+        jb_p_label = f"p < {jb_p_value[1:]}"
+    else:
+        jb_p_label = f"p={jb_p_value}"
+    print(
+        f"Jarque-Bera: {jb_p_label}; "
+        f"curtosis de residuos={diagnostics['curtosis_pearson']:.2f}; "
+        "la prueba detecta residuos no normales."
+    )
+
+    print("\nVALIDACION FINAL DE 41 SEMANAS")
+    print(
+        f"Entrenamiento hasta {validation['fecha_fin_entrenamiento']} "
+        f"(n={validation['n_entrenamiento']}); validacion "
+        f"{validation['fecha_inicio_validacion']} a "
+        f"{validation['fecha_fin_validacion']} (n={validation['n_validacion']})."
+    )
+    print(
+        f"AR(2): MAE={validation['mae_ar2'] * 100:.4f}% y "
+        f"RMSE={validation['rmse_ar2'] * 100:.4f}% | "
+        f"retorno cero: MAE={validation['mae_referencia_cero'] * 100:.4f}% y "
+        f"RMSE={validation['rmse_referencia_cero'] * 100:.4f}%."
+    )
+    print(
+        f"Reduccion del RMSE frente al retorno cero: "
+        f"{validation['mejora_rmse_porcentual']:.3f}%."
+    )
+
+    print("\nPRONOSTICO A 10 SEMANAS (retorno e IC 95%, en %)")
+    print(f"{'Fecha':<12}{'Pronostico':>14}{'IC inferior':>16}{'IC superior':>16}")
+    for row in forecast.itertuples(index=False):
+        print(
+            f"{str(row.fecha):<12}"
+            f"{row.pronostico_log_retorno * 100:>13.3f}%"
+            f"{row.limite_inferior_95 * 100:>15.3f}%"
+            f"{row.limite_superior_95 * 100:>15.3f}%"
+        )
+
+    print(f"\nArchivos completos guardados en: {OUTPUT_DIR}")
+    print("=" * 76)
+
+
+def main() -> None:
+    returns = load_weekly_returns()
     run_analysis(returns)
-    print(f"Resultados guardados en: {OUTPUT_DIR}")
-    print(f"Orden ARIMA fijado manualmente: {SELECTED_ORDER}")
+    print_terminal_summary(returns)
 
 
 if __name__ == "__main__":
