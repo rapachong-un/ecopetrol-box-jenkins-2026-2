@@ -36,8 +36,10 @@ macOS/Linux:
 
 ## Archivos y resultados
 
-Todo el código Python necesario está en scripts/run_analysis.py; ese es el único archivo que se debe ejecutar. El script resuelve las rutas desde su propia ubicación, lee el CSV incluido y crea outputs/ al ejecutarse.
+Todo el código Python necesario está en scripts/run_analysis.py; ese es el único archivo que se debe ejecutar. El script resuelve las rutas desde su propia ubicación, lee el CSV incluido y crea o actualiza los archivos de outputs/ al ejecutarse.
 
-La carpeta outputs/ contiene tablas y figuras regenerables: descriptivos, ADF, comparación de candidatos, diagnósticos residuales, y pronóstico a diez semanas. Se excluye del repositorio para mantenerlo compacto; el script la vuelve a crear cuando se ejecuta.
+La carpeta outputs/ contiene los resultados del análisis: descriptivos, ADF, comparación de candidatos, diagnósticos residuales, serie analizada y pronóstico a diez semanas. Se incluyen en el repositorio para que los resultados estén disponibles sin ejecutar el código; también se pueden regenerar ejecutando el script.
+
+El póster final está en poster/ecopetrol_box_jenkins_poster.pdf, con una vista previa PNG en la misma carpeta.
 
 El orden ARIMA se fija manualmente en la constante SELECTED_ORDER al comienzo del archivo. La lista CANDIDATE_ORDERS también se define allí y solo se compara; el programa no escoge automáticamente un modelo.
