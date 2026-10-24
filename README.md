@@ -31,9 +31,3 @@ El script localiza datos y resultados con rutas relativas a esta carpeta. El CSV
 - poster/: destino del póster final.
 
 El orden ARIMA se fija manualmente en src/config.py después de interpretar ACF/PACF y justificar la estimación. El código no selecciona automáticamente un modelo. El análisis cubre la muestra completa 2010–2025 y no contiene el experimento 2022–2025.
-
-
-Para regenerar el póster después de ejecutar el análisis:
-
-    python poster/build_poster.py
-
