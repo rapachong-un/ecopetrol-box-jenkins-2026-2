@@ -1,6 +1,7 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 .venv/
 .env
 .idea/
 .vscode/
+outputs/
